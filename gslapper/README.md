@@ -72,15 +72,14 @@ noctalia msg panel-toggle nomadcxx/gslapper:picker
 Control wallpapers via IPC:
 
 ```sh
-# Restore all stopped or crashed wallpapers with their last known slideshow interval
-noctalia msg plugin nomadcxx/gslapper:service all restore-all
+# Toggle stop/restore all wallpapers (stops if running, restores if stopped)
+noctalia msg plugin nomadcxx/gslapper:service all toggle-stop
 
-# Stop all wallpapers (hands outputs back to Noctalia)
-noctalia msg plugin nomadcxx/gslapper:service all stop
+# Toggle stop/restore for a specific output
+noctalia msg plugin nomadcxx/gslapper:service all toggle-stop DP-1
 
-# Stop or restore a specific output
-noctalia msg plugin nomadcxx/gslapper:service all stop DP-1
-noctalia msg plugin nomadcxx/gslapper:service all restore DP-1
+# Short alias
+noctalia msg plugin nomadcxx/gslapper:service all toggle DP-1
 ```
 
 The service indexes your image and video roots when Noctalia starts. It creates

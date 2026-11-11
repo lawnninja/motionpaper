@@ -122,6 +122,12 @@ assert(service.assignments["DP-1"] == nil)
 service.onIpc("restore", "DP-1")
 assert(service.assignments["DP-1"] and service.assignments["DP-1"].path == "/w/1.jpg", "expected restore DP-1")
 
+-- Test toggle-stop IPC
+service.onIpc("toggle-stop", "DP-1")
+assert(service.assignments["DP-1"] == nil, "expected toggle-stop to stop DP-1")
+service.onIpc("toggle-stop", "DP-1")
+assert(service.assignments["DP-1"] and service.assignments["DP-1"].path == "/w/1.jpg", "expected toggle-stop to restore DP-1")
+
 -- Re-clear DP-1 and DP-2 for next test
 service.onIpc("stop", "*")
 

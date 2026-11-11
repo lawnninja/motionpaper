@@ -533,6 +533,7 @@ local COMMAND_ACTIONS = {
     ["set-slideshow"] = true,
     ["stop"] = true,
     ["stop-all"] = true,
+    ["toggle-stop"] = true,
 }
 
 local function validateCommand(command)
@@ -1936,7 +1937,9 @@ local function runModelChecks()
         and not validateCommand({ nonce = 1, action = "set-slideshow", target = "*", interval_sec = 60, shuffle = "yes" }), "invalid slideshow command accepted")
     assert(validateCommand({ nonce = 1, action = "restore-all", target = "*" })
         and validateCommand({ nonce = 1, action = "stop-all", target = "*" })
-        and validateCommand({ nonce = 1, action = "stop", target = "DP-1" }), "stop/restore commands rejected")
+        and validateCommand({ nonce = 1, action = "stop", target = "DP-1" })
+        and validateCommand({ nonce = 1, action = "toggle-stop", target = "*" })
+        and validateCommand({ nonce = 1, action = "toggle-stop", target = "DP-1" }), "stop/restore commands rejected")
 
     local testStill = stillPathFor("/tmp/video.mp4")
     assert(testStill and testStill:match("/still%-[0-9a-f]+%.jpg$") ~= nil, "stillPathFor failed")
@@ -2063,6 +2066,29 @@ local function handleCommand(command)
         record.summary = summarizeResults(results)
         noctalia.state.set("command_result", record)
         return true
+    end
+
+    if command.action == "toggle-stop" then
+        local isAll = (command.target == "*" or command.target == nil or command.target == "")
+        if isAll then
+            local anyRunning = false
+            for _, c in ipairs(connectors) do
+                local a = assignments[c]
+                local live = runtime[c]
+                local isHalted = live and (live.status == "stopped" or live.status == "error")
+                if a and not isHalted then
+                    anyRunning = true
+                    break
+                end
+            end
+            command.action = anyRunning and "stop-all" or "restore-all"
+            command.target = "*"
+        else
+            local a = assignments[command.target]
+            local live = runtime[command.target]
+            local isHalted = live and (live.status == "stopped" or live.status == "error")
+            command.action = (a and not isHalted) and "stop" or "restore"
+        end
     end
 
     local allAction = command.action == "restore-all" or command.action == "stop-all"
@@ -2196,24 +2222,11 @@ function onIpc(event, payload)
             action = "resume",
             target = target,
         })
-    elseif event == "stop" then
+    elseif event == "toggle-stop" or event == "toggle" or event == "stop" or event == "restore" or event == "restore-all" then
         local target = (type(payload) == "string" and payload ~= "") and payload or "*"
         handleCommand({
             nonce = nextIpcNonce(),
-            action = target == "*" and "stop-all" or "stop",
-            target = target,
-        })
-    elseif event == "restore-all" then
-        handleCommand({
-            nonce = nextIpcNonce(),
-            action = "restore-all",
-            target = "*",
-        })
-    elseif event == "restore" then
-        local target = (type(payload) == "string" and payload ~= "") and payload or "*"
-        handleCommand({
-            nonce = nextIpcNonce(),
-            action = target == "*" and "restore-all" or "restore",
+            action = "toggle-stop",
             target = target,
         })
     end

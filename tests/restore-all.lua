@@ -104,6 +104,7 @@ files[service.stillPathFor(VIDEO)] = "still"   -- cached still: launch happens r
 local nonce = 0
 local function send(action, target, extra)
     -- IPC events use time-based nonces; stay ahead of them.
+    now = now + 1
     nonce = math.max(nonce, now * 1000 + 1000) + 1
     local command = { nonce = nonce, action = action, target = target }
     for key, value in pairs(extra or {}) do command[key] = value end
@@ -248,5 +249,50 @@ settle()
 assert(service.assignments["DP-1"].path == VIDEO and service.assignments["DP-1"].desired_playback == "playing",
     "stopped playing video did not come back playing")
 assert(service.assignments["DP-2"].path == IMAGE, "image not restored by restore-all")
+
+print("=== Test 8: toggle-stop on running output stops it, second toggle-stop restores it ===")
+assert(service.assignments["DP-1"] ~= nil and service.runtime["DP-1"].status == "playing")
+assert(send("toggle-stop", "DP-1"))
+settle()
+assert(service.assignments["DP-1"] == nil, "toggle-stop did not stop DP-1")
+assert(wallpapersEnabled["DP-1"] == true, "native wallpaper not re-enabled on stop")
+assert(send("toggle-stop", "DP-1"))
+settle()
+assert(service.assignments["DP-1"] and service.assignments["DP-1"].path == VIDEO, "toggle-stop did not restore DP-1")
+assert(service.assignments["DP-1"].desired_playback == "playing", "toggle-stop did not restore as playing")
+assert(service.runtime["DP-1"].status == "playing", "runtime status not playing")
+
+print("=== Test 9: toggle-stop on paused output stops it, second toggle-stop restores it paused ===")
+assert(send("pause", "DP-1"))
+settle()
+assert(service.assignments["DP-1"].desired_playback == "paused")
+assert(send("toggle-stop", "DP-1"))
+settle()
+assert(service.assignments["DP-1"] == nil, "toggle-stop did not stop paused DP-1")
+assert(send("toggle-stop", "DP-1"))
+settle()
+assert(service.assignments["DP-1"] and service.assignments["DP-1"].desired_playback == "paused",
+    "toggle-stop did not restore as paused")
+assert(service.runtime["DP-1"].status == "paused")
+
+print("=== Test 10: onIpc toggle-stop * stops all when running, restores all when stopped ===")
+assert(send("resume", "DP-1"))
+settle()
+assert(service.assignments["DP-1"] ~= nil and service.assignments["DP-2"] ~= nil)
+service.onIpc("toggle-stop", "*")
+settle()
+assert(service.assignments["DP-1"] == nil and service.assignments["DP-2"] == nil, "toggle-stop * did not stop all outputs")
+service.onIpc("toggle-stop", "*")
+settle()
+assert(service.assignments["DP-1"] ~= nil and service.assignments["DP-2"] ~= nil, "toggle-stop * did not restore all outputs")
+assert(service.assignments["DP-1"].path == VIDEO and service.assignments["DP-2"].path == IMAGE)
+
+print("=== Test 11: onIpc toggle alias works ===")
+service.onIpc("toggle", "DP-2")
+settle()
+assert(service.assignments["DP-2"] == nil, "toggle alias did not stop DP-2")
+service.onIpc("toggle", "DP-2")
+settle()
+assert(service.assignments["DP-2"] and service.assignments["DP-2"].path == IMAGE, "toggle alias did not restore DP-2")
 
 print("All restore tests passed successfully!")

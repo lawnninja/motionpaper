@@ -759,6 +759,13 @@ local function controlStrip(connectors)
             flexGrow = 1,
             maxLines = 1,
         }))
+        local anyRunning = false
+        for _, c in ipairs(connectors) do
+            if assignments[c] and not halted(c) then
+                anyRunning = true
+                break
+            end
+        end
         local anyRestorable = false
         for _, c in ipairs(connectors) do
             if restorable(c) then anyRestorable = true break end
@@ -770,16 +777,10 @@ local function controlStrip(connectors)
             onClick = function() sendCommand(playbackAction) end,
         }))
         table.insert(items, ui.button({
-            text = tr("panel.stop_all"),
+            text = tr(anyRunning and "panel.stop_all" or "panel.restore_all"),
             variant = "ghost",
-            enabled = counts.video + counts.image > 0 and not selectionBusy(),
-            onClick = function() sendCommand("stop-all") end,
-        }))
-        table.insert(items, ui.button({
-            text = tr("panel.restore_all"),
-            variant = "ghost",
-            enabled = anyRestorable and not selectionBusy(),
-            onClick = function() sendCommand("restore-all") end,
+            enabled = (anyRunning or anyRestorable) and not selectionBusy(),
+            onClick = function() sendCommand("toggle-stop") end,
         }))
     else
         local assignment = assignments[selectedOutput]
@@ -812,19 +813,11 @@ local function controlStrip(connectors)
                     onClick = function() sendCommand(paused and "resume" or "pause") end,
                 }))
             end
-            if canRestore then
-                table.insert(items, ui.button({
-                    text = tr("panel.restore"),
-                    variant = "ghost",
-                    enabled = not selectionBusy(),
-                    onClick = function() sendCommand("restore") end,
-                }))
-            end
             table.insert(items, ui.button({
-                text = tr("panel.stop"),
+                text = tr(stopped and "panel.restore" or "panel.stop"),
                 variant = "ghost",
                 enabled = not selectionBusy(),
-                onClick = function() sendCommand("stop") end,
+                onClick = function() sendCommand("toggle-stop") end,
             }))
         elseif remembered then
             table.insert(items, ui.glyph({
@@ -844,7 +837,7 @@ local function controlStrip(connectors)
                 text = tr("panel.restore"),
                 variant = "ghost",
                 enabled = not selectionBusy(),
-                onClick = function() sendCommand("restore") end,
+                onClick = function() sendCommand("toggle-stop") end,
             }))
         else
             table.insert(items, ui.glyph({
