@@ -8,8 +8,8 @@ expect() {
     }
 }
 
-expect '^default = "none"$' gslapper/plugin.toml
-expect 'hidden = "none"' gslapper/service.luau
-expect '#hiddenFlags("none") == 0' gslapper/service.luau
+expect '^default = "none"$' motionpaper/plugin.toml
+expect 'hidden = "none"' motionpaper/service.luau
+expect '#hiddenFlags("none") == 0' motionpaper/service.luau
 
 echo "hidden playback default: passed"

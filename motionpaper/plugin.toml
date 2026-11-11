@@ -1,13 +1,13 @@
-id = "nomadcxx/gslapper"
-name = "gSlapper Wallpaper"
-version = "0.1.1"
-plugin_api = 19
-author = "Nomadcxx"
+id = "lawnninja/motionpaper"
+name = "Motionpaper"
+version = "1.0.0"
+plugin_api = 43
+author = "lawnninja"
 license = "MIT"
 dependencies = ["find", "gslapper", "gst-launch-1.0", "pkill", "socat"]
 tags = ["bar", "panel", "service", "video", "wallpaper"]
 icon = "wallpaper-selector"
-description = "Choose an image or video wallpaper for each output."
+description = "Hardware-accelerated dynamic video and image wallpaper manager for Wayland."
 
 [[setting]]
 key = "video_directory"

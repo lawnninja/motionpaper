@@ -40,7 +40,7 @@ noctalia = {
 local saved
 noctalia.json.encode = function(value) saved = value return "encoded" end
 
-local service = dofile("gslapper/service.luau")
+local service = dofile("motionpaper/service.luau")
 
 assert(service.runSelfTest(true).passed, "service self-test failed: " .. tostring(service.runSelfTest(true).error))
 

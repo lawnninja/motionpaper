@@ -11,7 +11,7 @@ if not bit32 then
     bit32 = { bxor = function(a, b) return a ~ b end }
 end
 
-local SOCKET_DIR = "/run/user/1000/noctalia-gslapper/"
+local SOCKET_DIR = "/run/user/1000/noctalia-motionpaper/"
 local FLAGS = "--fork --ipc-socket --no-save-state --auto-pause --auto-stop --fps-cap --gst-options --transition-type --transition-duration"
 
 local function done(callback, code, stdout)
@@ -91,7 +91,7 @@ noctalia = {
     end,
 }
 
-local service = dofile("gslapper/service.luau")
+local service = dofile("motionpaper/service.luau")
 assert(service.runSelfTest(true).passed, "self-test failed: " .. tostring(service.runSelfTest(true).error))
 
 local VIDEO = "/w/v.mp4"

@@ -6,7 +6,7 @@ noctalia = {
     },
 }
 
-local picker = dofile("gslapper/panel.luau")
+local picker = dofile("motionpaper/panel.luau")
 local media = {}
 for index = 1, 25 do
     media[index] = { name = tostring(index), kind = "image" }
@@ -23,7 +23,7 @@ local folders, separatedMedia = picker.partitionEntries({
 }, "")
 assert(#folders == 1 and #separatedMedia == 1, "folders must not consume media page slots")
 
-local panelSource = assert(io.open("gslapper/panel.luau", "r")):read("*a")
+local panelSource = assert(io.open("motionpaper/panel.luau", "r")):read("*a")
 assert(
     not panelSource:find('tr("panel.applied_summary"', 1, true),
     "completed wallpaper changes must not leave a success banner"

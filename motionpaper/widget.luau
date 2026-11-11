@@ -1,6 +1,6 @@
 --!nonstrict
 
-local PANEL_ID = "nomadcxx/gslapper:picker"
+local PANEL_ID = "lawnninja/motionpaper:picker"
 
 local function render()
   barWidget.setGlyph(noctalia.getConfig("glyph") or "wallpaper-selector")

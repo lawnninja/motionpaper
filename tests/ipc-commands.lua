@@ -63,7 +63,7 @@ noctalia = {
     },
 }
 
-local service = dofile("gslapper/service.luau")
+local service = dofile("motionpaper/service.luau")
 assert(service.runSelfTest(true).passed, "self-test failed")
 
 -- Step startup async tasks (capabilities and find indexing)
@@ -133,7 +133,7 @@ service.onIpc("stop", "*")
 
 print("=== Test 3: onIpc pause and resume ===")
 -- Setup a mock video assignment on DP-1
-local socketPath = "/run/user/1000/noctalia-gslapper/DP-1.sock"
+local socketPath = "/run/user/1000/noctalia-motionpaper/DP-1.sock"
 files[socketPath] = "mock socket"
 service.runtime["DP-1"] = { status = "playing", socket_path = socketPath }
 service.assignments["DP-1"] = { kind = "video", path = "/w/vid.mp4", desired_playback = "playing" }
@@ -150,7 +150,7 @@ print("=== Test 4: assignVideo launches gslapper only after still extraction com
 -- Reset DP-1
 service.runtime["DP-1"] = nil
 service.assignments["DP-1"] = nil
-files["/run/user/1000/noctalia-gslapper/DP-1.sock"] = nil
+files["/run/user/1000/noctalia-motionpaper/DP-1.sock"] = nil
 wallpaperCalls = {}
 asyncCallbacks = {}
 

@@ -70,7 +70,7 @@ noctalia = {
     },
 }
 
-local service = dofile("gslapper/service.luau")
+local service = dofile("motionpaper/service.luau")
 
 local testReport = service.runSelfTest(true)
 assert(testReport.passed, "self-test failed: " .. tostring(testReport.error))
@@ -120,7 +120,7 @@ assert(wallpaperCalls[2].path == stillTarget, "second wallpaper call should be f
 -- Now step the gslapper launch command so commitVideo runs
 stepAsync("gslapper", 0, "")
 -- Simulate query response from gslapper socket
-local socketPath = "/run/user/1000/noctalia-gslapper/DP-1.sock"
+local socketPath = "/run/user/1000/noctalia-motionpaper/DP-1.sock"
 files[socketPath] = "fake socket"
 -- In the test environment, commitVideo will be called when query is received or launched
 -- Check assignment or in-flight preview_path

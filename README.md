@@ -1,44 +1,42 @@
-# gSlapper Wallpaper for Noctalia
+# Motionpaper
 
-`nomadcxx/gslapper` adds image and video wallpapers to Noctalia v5. Its combined
-picker can assign one file to every output or a different file to each
-connector.
+Hardware-accelerated dynamic video and image wallpaper manager for Noctalia v5 on Wayland, powered by GStreamer and the lightweight `gslapper` layer-shell daemon.
 
-> Requires Noctalia v5 and plugin API 19. Noctalia v4 uses a different QML
-> plugin format and will not list or load this source.
+## Features
 
-Video playback uses [gSlapper](https://github.com/Nomadcxx/gSlapper) instead of
-mpvpaper. gSlapper uses GStreamer rather than libmpv; its README documents lower
-CPU, memory, and GPU use than mpvpaper. Tests cover Niri, Hyprland, and Sway.
+- **Hardware Acceleration**: High-performance video decoding via VA-API, NVDEC, or VDPAU through GStreamer.
+- **Zero Black Flashes**: Pre-extracts and caches full-resolution still frames from video files, seamlessly holding the surface until decoding begins.
+- **Independent Multi-Monitor Support**: Assign unique videos or static images to individual monitors, or synchronize across all outputs.
+- **Smart Power Efficiency**: Optional auto-pause or auto-stop when windows or fullscreen surfaces obscure the desktop.
+- **Timer Slideshow & Shuffle**: Automatic timed rotation across folder contents with shuffle support, preserving intervals across reboots.
+- **Persistent State & Recovery**: Saved last-known wallpaper and slideshow intervals survive restarts and unexpected process termination.
+- **Unified Controls**: One-click toggle stop / restore in both the UI panel and IPC interface.
 
-![gSlapper wallpaper picker](gslapper/thumbnail.webp)
+## Comparison with Other Video Wallpaper Solutions
 
-## Requirements
+| Feature / Dimension | **Motionpaper** (This Plugin) | **mpvpaper** | **swww** | **hyprpaper** | **linux-wallpaperengine** |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Supported Media** | **MP4 / WebM / MKV Video + Still Images** | Video only | Static Images & Animated GIFs | Static Images only | Scene, Web & Video Wallpapers |
+| **Backend Engine** | **`gSlapper`** (C / GStreamer layer-shell) | `mpv` library / player wrapper | `swww` Wayland daemon | Native Hyprland daemon | Steam Wallpaper Engine runtime |
+| **Hardware Decoding** | **VA-API / NVDEC / VDPAU** via GStreamer | VA-API via mpv | N/A (software GIF decoding) | N/A | OpenGL / Vulkan GPU shaders |
+| **Black Frame Prevention** | **Zero black-flash**: Pre-extracts still frame before video start | Black flash on wallpaper load/switch | N/A (instant image flip) | N/A | Long initial compilation delay |
+| **Multi-Monitor Setup** | **Independent per-output**: Mix video on one display and image on another | Per-output video | Per-output image | Per-output image | Per-output scene |
+| **Power & Battery Efficiency** | **Smart auto-pause / auto-stop**: Suspends rendering when windows cover the monitor | None (runs continuously unless externally scripted) | Low idle draw (static images only) | Very low (static) | High GPU/battery draw |
+| **Integrated Slideshow** | **Built-in timer rotation with shuffle** (preserves interval across restarts) | Requires external bash loop | Built-in timed rotation | External script required | Built-in playlist |
+| **State Persistence & Recovery** | **Automatic state persistence**: Restores wallpapers & slideshows after restart/crash with unified toggle | None (stateless process) | In-memory cache only | Config file only | Stored in application profile |
+| **Native Noctalia Integration** | **Rich UI Panel**: Visual thumbnail grid, search, directory browser, status badges, unified toggle | Basic / External | CLI only | CLI only | Separate GUI / Tray |
+| **Scriptability & IPC** | **Rich IPC API** (`toggle-stop`, `toggle`, `pause`, `resume`, `next`, `slideshow`) | Named pipe / UNIX socket | UNIX socket CLI | Socket IPC | Command line arguments |
 
-Install [gSlapper](https://github.com/Nomadcxx/gSlapper) 1.5.2 or newer,
-`find`, `gst-launch-1.0`, `pkill`, and `socat`.
+## Installation
 
-## Install
-
-Add this repository as a custom plugin source in Noctalia:
-
-1. Open **Settings → Plugins → Sources**.
-2. Choose **Add custom repository**.
-3. Enter `https://github.com/Nomadcxx/noctalia-gslapper`.
-4. Open **Settings → Plugins → Install** and select **gSlapper Wallpaper**.
-
-Or install it from a shell:
-
-```sh
-noctalia msg plugins source add gslapper git https://github.com/Nomadcxx/noctalia-gslapper
-noctalia msg plugins enable nomadcxx/gslapper
-```
-
-See the [plugin README](gslapper/README.md) for the bar-widget steps,
-configuration, commands, and runtime side effects.
-
-Run the panel pagination check from the repository root:
+Install dependencies (`gslapper`, `gst-launch-1.0`, `find`, `socat`, `pkill`) and enable the plugin:
 
 ```sh
-lua tests/panel-selftest.lua
+noctalia msg plugins enable lawnninja/motionpaper
 ```
+
+## Credits & Acknowledgements
+
+Motionpaper is built upon and inspired by the original **gSlapper** wallpaper plugin created by **[Nomadcxx](https://github.com/Nomadcxx)** ([gSlapper](https://github.com/Nomadcxx/gSlapper) / [noctalia-gslapper](https://github.com/Nomadcxx/noctalia-gslapper)).
+
+We extend special thanks and full credit to **Nomadcxx** for creating the lightweight C/GStreamer Wayland layer-shell daemon and the initial integration architecture that made this project possible.

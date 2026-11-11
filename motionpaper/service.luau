@@ -465,7 +465,7 @@ local function runtimeDirectory()
     if not validateShellValue(base) or base == "" or base:sub(1, 1) ~= "/" then
         return nil, "XDG_RUNTIME_DIR is unavailable"
     end
-    return base .. "/noctalia-gslapper"
+    return base .. "/noctalia-motionpaper"
 end
 
 local function socketPathFor(connector, directory)
@@ -1881,7 +1881,7 @@ local function runModelChecks()
     assert(validMediaRoot("/wallpapers") and not validMediaRoot("wallpapers")
         and not validMediaRoot("/wall\npapers"), "media root validation failed")
 
-    local testDirectory = "/run/user/1000/noctalia-gslapper"
+    local testDirectory = "/run/user/1000/noctalia-motionpaper"
     local socketPath = socketPathFor("../DP/1", testDirectory)
     assert(socketPath == testDirectory .. "/.._DP_1.sock", "connector escaped runtime directory")
     assert(isOwnedSocket(socketPath, testDirectory) and not isOwnedSocket("/tmp/DP-1.sock", testDirectory), "socket ownership failed")
