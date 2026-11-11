@@ -602,6 +602,8 @@ local function commandTargets(action, target, connectors, durable)
     for _, connector in ipairs(targets) do
         if durable[connector] and durable[connector].kind == "video" then
             table.insert(videos, connector)
+        elseif action == "resume" and not durable[connector] and lastKnown[connector] and lastKnown[connector].kind == "video" then
+            table.insert(videos, connector)
         end
     end
     return videos
@@ -949,16 +951,13 @@ local function publishLastKnown()
 end
 
 -- Remember the output's wallpaper and slideshow before Stop clears them.
--- Videos come back paused because the user stopped them.
 local function rememberConnector(connector)
     local assignment = assignments[connector]
     if not assignment then
         return
     end
     local record = copyTable(assignment)
-    if record.kind == "video" then
-        record.desired_playback = "paused"
-    end
+    record.desired_playback = assignment.desired_playback or "playing"
     local config = slideshow[connector]
     record.slideshow = config and copyTable(config) or nil
     lastKnown[connector] = record
@@ -1275,12 +1274,31 @@ local function commitVideo(connector, generation, assignment, query)
                 setConnectorError(connector, generation, paused.error)
                 return
             end
+            assignment._playback_applied = true
             ipcCommand(live.socket_path, "query", function(pausedQuery)
                 commitVideo(connector, generation, assignment, pausedQuery)
             end)
         end)
         return
+    elseif assignment.desired_playback == "playing" and query.status == "paused" and not assignment._playback_applied then
+        local live = runtime[connector]
+        ipcCommand(live.socket_path, "resume", function(resumed)
+            if not isCurrent(connector, generation) then
+                return
+            end
+            if not resumed.ok then
+                setConnectorError(connector, generation, resumed.error)
+                return
+            end
+            assignment._playback_applied = true
+            ipcCommand(live.socket_path, "query", function(resumedQuery)
+                commitVideo(connector, generation, assignment, resumedQuery)
+            end)
+        end)
+        return
     end
+
+    assignment._playback_applied = nil
 
     local previous = assignments[connector]
     assignments[connector] = copyTable(assignment)
@@ -1295,7 +1313,7 @@ local function commitVideo(connector, generation, assignment, query)
     clearPending(connector)
     noctalia.setWallpaperEnabled(connector, false)
     runtime[connector] = {
-        status = query.status,
+        status = assignment.desired_playback or query.status,
         error = nil,
         socket_path = runtime[connector] and runtime[connector].socket_path,
     }
@@ -1604,8 +1622,8 @@ local function setPlayback(connector, desired)
             if not isCurrent(connector, generation) then
                 return
             end
-            if not query.ok or query.status ~= desired then
-                setLiveError(connector, generation, query.error or "playback state did not change")
+            if not query.ok then
+                setLiveError(connector, generation, query.error or "failed to query gSlapper")
                 return
             end
             assignment.desired_playback = desired
@@ -1615,7 +1633,7 @@ local function setPlayback(connector, desired)
                 setLiveError(connector, generation, saveError)
                 return
             end
-            runtime[connector].status = query.status
+            runtime[connector].status = desired
             publishAssignments()
             publishRuntime()
             completeRequest(connector, true)
@@ -1672,7 +1690,7 @@ local function restoreAssignment(connector)
 end
 
 -- Restore: relaunch a crashed video, or bring back the wallpaper saved by Stop.
-local function restoreLast(connector)
+local function restoreLast(connector, desiredPlaybackOverride)
     if not connectorDetected(connector) then
         return false, "output is not connected"
     end
@@ -1681,7 +1699,8 @@ local function restoreLast(connector)
         local live = runtime[connector]
         local running = live and (live.status == "playing" or live.status == "paused")
         if assignment.kind == "video" and not running then
-            local ok, message = assignVideo(connector, assignment.path, assignment.preview_path, assignment.desired_playback)
+            local playback = desiredPlaybackOverride or assignment.desired_playback
+            local ok, message = assignVideo(connector, assignment.path, assignment.preview_path, playback)
             local config = slideshow[connector]
             if ok and config then
                 slideshowNextAt[connector] = noctalia.nowMs() + config.interval_sec * 1000
@@ -1701,7 +1720,8 @@ local function restoreLast(connector)
     if record.kind == "image" then
         ok, message = assignImage(connector, record.path)
     else
-        ok, message = assignVideo(connector, record.path, record.preview_path, record.desired_playback)
+        local playback = desiredPlaybackOverride or record.desired_playback
+        ok, message = assignVideo(connector, record.path, record.preview_path, playback)
     end
     if ok and record.slideshow then
         slideshow[connector] = copyTable(record.slideshow)
@@ -2066,7 +2086,11 @@ local function handleCommand(command)
             elseif command.action == "pause" then
                 ok, message = setPlayback(connector, "paused")
             elseif command.action == "resume" then
-                ok, message = setPlayback(connector, "playing")
+                if not assignments[connector] and lastKnown[connector] and lastKnown[connector].kind == "video" then
+                    ok, message = restoreLast(connector, "playing")
+                else
+                    ok, message = setPlayback(connector, "playing")
+                end
             elseif command.action == "next" then
                 ok, message = advanceSlide(connector)
             elseif command.action == "restore" or command.action == "restore-all" then

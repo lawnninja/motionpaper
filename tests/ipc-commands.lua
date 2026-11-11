@@ -133,10 +133,12 @@ service.runtime["DP-1"] = { status = "playing", socket_path = socketPath }
 service.assignments["DP-1"] = { kind = "video", path = "/w/vid.mp4", desired_playback = "playing" }
 
 service.onIpc("pause", "DP-1")
-assert(service.assignments["DP-1"].desired_playback == "paused" or state.command_result.action == "pause", "expected pause action")
+assert(service.assignments["DP-1"].desired_playback == "paused", "expected desired_playback == paused")
+assert(service.runtime["DP-1"].status == "paused", "expected runtime status == paused")
 
 service.onIpc("resume", "DP-1")
-assert(state.command_result.action == "resume", "expected resume action")
+assert(service.assignments["DP-1"].desired_playback == "playing", "expected desired_playback == playing")
+assert(service.runtime["DP-1"].status == "playing", "expected runtime status == playing")
 
 print("=== Test 4: assignVideo launches gslapper only after still extraction completes ===")
 -- Reset DP-1
