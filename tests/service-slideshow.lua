@@ -69,9 +69,9 @@ assert(saved and saved.outputs["DP-1"].interval_sec == 300, "slideshow not persi
 assert(not send("set-slideshow", "DP-1", { interval_sec = 7, shuffle = false }), "invalid interval accepted")
 assert(state.slideshow["DP-1"].interval_sec == 300, "invalid command changed state")
 
--- Restore turns the slideshow off.
-assert(send("restore", "DP-1"))
-assert(state.slideshow["DP-1"] == nil, "restore left the slideshow on")
+-- Stop turns the slideshow off (it is remembered in last_known for Restore).
+assert(send("stop", "DP-1"))
+assert(state.slideshow["DP-1"] == nil, "stop left the slideshow on")
 
 -- Off clears.
 assert(send("assign-image", "DP-1", { path = "/w/a.jpg" }))

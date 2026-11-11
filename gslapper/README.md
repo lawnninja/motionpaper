@@ -61,12 +61,26 @@ Wallpaper widget if you want one wallpaper button.
 
 Left-click the gSlapper widget to open the picker. Select **All outputs** or a
 connector such as `eDP-1` or `DP-1`, then choose an image or video. The All
-view can pause assigned videos or restore every output.
+view can pause assigned videos, stop all wallpapers, or restore every output.
 
 Toggle the picker from a shell:
 
 ```sh
 noctalia msg panel-toggle nomadcxx/gslapper:picker
+```
+
+Control wallpapers via IPC:
+
+```sh
+# Restore all stopped or crashed wallpapers with their last known slideshow interval
+noctalia msg plugin nomadcxx/gslapper:service all restore-all
+
+# Stop all wallpapers (hands outputs back to Noctalia)
+noctalia msg plugin nomadcxx/gslapper:service all stop
+
+# Stop or restore a specific output
+noctalia msg plugin nomadcxx/gslapper:service all stop DP-1
+noctalia msg plugin nomadcxx/gslapper:service all restore DP-1
 ```
 
 The service indexes your image and video roots when Noctalia starts. It creates
@@ -109,9 +123,12 @@ noctalia msg plugin nomadcxx/gslapper:service all self-test
 - The picker skips filenames that do not use UTF-8.
 - Static images use Noctalia's wallpaper renderer. For video assignments, the
   plugin disables Noctalia's wallpaper surface on that output while gSlapper
-  owns it, then restores the native surface when you select **Restore**.
-- Use **Restore all** before disabling or reloading the plugin. This stops its
+  owns it, then restores the native surface when you select **Stop**.
+- Use **Stop all** before disabling or reloading the plugin. This stops its
   processes, removes its sockets, and re-enables Noctalia's wallpaper surfaces.
+- Use **Restore all** to restore previously stopped or crashed wallpapers back
+  to their last known state, maintaining slideshow intervals and setting stopped
+  videos to paused.
 - The current plugin API does not report static wallpaper changes made outside
   this plugin, so its saved image assignment can become stale.
 - Assignments follow connector names, not monitor serial numbers. Review them

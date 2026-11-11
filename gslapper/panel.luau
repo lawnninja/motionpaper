@@ -22,6 +22,7 @@ local outputs = noctalia.state.get("outputs") or {}
 local commandResult = noctalia.state.get("command_result")
 local selectedOutput = "*"
 local slideshow = noctalia.state.get("slideshow") or {}
+local lastKnown = noctalia.state.get("last_known") or {}
 local SLIDESHOW_PRESETS = { 0, 60, 300, 600, 900, 1800, 3600, 10800 }
 local nonceCounter = 0
 local outputOptions = {}
@@ -422,7 +423,7 @@ local function sendCommand(action, entry, extra)
     local command = {
         nonce = nextNonce(),
         action = action,
-        target = action == "restore-all" and "*" or selectedOutput,
+        target = (action == "restore-all" or action == "stop-all") and "*" or selectedOutput,
     }
     if entry then
         command.path = entry.path
@@ -695,6 +696,20 @@ function onSlideshowShuffle()
     sendCommand("set-slideshow", nil, { interval_sec = interval_sec, shuffle = not shuffle })
 end
 
+local function halted(connector)
+    local live = runtime[connector]
+    return live ~= nil and (live.status == "stopped" or live.status == "error")
+end
+
+-- Restore has something to do: a crashed video, or a wallpaper remembered by Stop.
+local function restorable(connector)
+    local assignment = assignments[connector]
+    if assignment then
+        return assignment.kind == "video" and halted(connector)
+    end
+    return lastKnown[connector] ~= nil
+end
+
 local function controlStrip(connectors)
     if #connectors == 0 then return nil end
 
@@ -744,6 +759,10 @@ local function controlStrip(connectors)
             flexGrow = 1,
             maxLines = 1,
         }))
+        local anyRestorable = false
+        for _, c in ipairs(connectors) do
+            if restorable(c) then anyRestorable = true break end
+        end
         table.insert(items, ui.button({
             text = tr(playbackAction == "resume" and "panel.resume_videos" or "panel.pause_videos"),
             variant = "ghost",
@@ -751,9 +770,15 @@ local function controlStrip(connectors)
             onClick = function() sendCommand(playbackAction) end,
         }))
         table.insert(items, ui.button({
+            text = tr("panel.stop_all"),
+            variant = "ghost",
+            enabled = counts.video + counts.image > 0 and not selectionBusy(),
+            onClick = function() sendCommand("stop-all") end,
+        }))
+        table.insert(items, ui.button({
             text = tr("panel.restore_all"),
             variant = "ghost",
-            enabled = #connectors > 0 and not selectionBusy(),
+            enabled = anyRestorable and not selectionBusy(),
             onClick = function() sendCommand("restore-all") end,
         }))
     else
@@ -761,6 +786,9 @@ local function controlStrip(connectors)
         local live = runtime[selectedOutput]
         local isVideo = assignment and assignment.kind == "video"
         local paused = live and live.status == "paused"
+        local stopped = halted(selectedOutput)
+        local canRestore = restorable(selectedOutput)
+        local remembered = lastKnown[selectedOutput]
 
         if assignment then
             table.insert(items, ui.glyph({
@@ -776,7 +804,7 @@ local function controlStrip(connectors)
                     color = live and live.error and "error" or "on_surface_variant",
                 }),
             }))
-            if isVideo then
+            if isVideo and not stopped then
                 table.insert(items, ui.button({
                     text = tr(paused and "panel.resume" or "panel.pause"),
                     variant = "ghost",
@@ -784,6 +812,34 @@ local function controlStrip(connectors)
                     onClick = function() sendCommand(paused and "resume" or "pause") end,
                 }))
             end
+            if canRestore then
+                table.insert(items, ui.button({
+                    text = tr("panel.restore"),
+                    variant = "ghost",
+                    enabled = not selectionBusy(),
+                    onClick = function() sendCommand("restore") end,
+                }))
+            end
+            table.insert(items, ui.button({
+                text = tr("panel.stop"),
+                variant = "ghost",
+                enabled = not selectionBusy(),
+                onClick = function() sendCommand("stop") end,
+            }))
+        elseif remembered then
+            table.insert(items, ui.glyph({
+                name = remembered.kind == "video" and "movie" or "photo",
+                color = "on_surface_variant",
+                size = 18,
+            }))
+            table.insert(items, ui.column({ flexGrow = 1, gap = 2, opacity = 0.7 }, {
+                ui.label({ text = remembered.path:match("([^/]+)$") or remembered.path, fontWeight = "bold", maxLines = 1 }),
+                ui.label({
+                    text = tr("panel.status_stopped"),
+                    fontSize = 10,
+                    color = "on_surface_variant",
+                }),
+            }))
             table.insert(items, ui.button({
                 text = tr("panel.restore"),
                 variant = "ghost",
@@ -1003,6 +1059,7 @@ end
 function onOpen(_context)
     outputs = noctalia.state.get("outputs") or noctalia.outputs() or {}
     slideshow = noctalia.state.get("slideshow") or {}
+    lastKnown = noctalia.state.get("last_known") or {}
     assignments = noctalia.state.get("assignments") or {}
     runtime = noctalia.state.get("runtime") or {}
     capabilities = noctalia.state.get("capabilities") or capabilities
@@ -1087,6 +1144,10 @@ noctalia.state.watch("assignments", function(value)
 end)
 noctalia.state.watch("slideshow", function(value)
     slideshow = type(value) == "table" and value or {}
+    render()
+end)
+noctalia.state.watch("last_known", function(value)
+    lastKnown = type(value) == "table" and value or {}
     render()
 end)
 noctalia.state.watch("runtime", function(value)

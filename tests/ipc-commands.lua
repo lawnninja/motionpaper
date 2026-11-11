@@ -111,6 +111,20 @@ assert(service.assignments["DP-1"] ~= nil and service.assignments["DP-2"] ~= nil
 service.onIpc("stop", "*")
 assert(service.assignments["DP-1"] == nil and service.assignments["DP-2"] == nil, "expected stop * to clear all assignments")
 
+-- Restore all
+service.onIpc("restore-all")
+assert(service.assignments["DP-1"] and service.assignments["DP-1"].path == "/w/1.jpg", "expected restore-all to restore DP-1")
+assert(service.assignments["DP-2"] and service.assignments["DP-2"].path == "/w/2.jpg", "expected restore-all to restore DP-2")
+
+-- Stop DP-1 and single restore
+service.onIpc("stop", "DP-1")
+assert(service.assignments["DP-1"] == nil)
+service.onIpc("restore", "DP-1")
+assert(service.assignments["DP-1"] and service.assignments["DP-1"].path == "/w/1.jpg", "expected restore DP-1")
+
+-- Re-clear DP-1 and DP-2 for next test
+service.onIpc("stop", "*")
+
 print("=== Test 3: onIpc pause and resume ===")
 -- Setup a mock video assignment on DP-1
 local socketPath = "/run/user/1000/noctalia-gslapper/DP-1.sock"

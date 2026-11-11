@@ -16,6 +16,15 @@ local SLIDESHOW_INTERVALS = {
 }
 local slideshow = {}
 local slideshowNextAt = {}
+-- Last wallpaper per output, remembered on Stop so Restore can bring it back.
+local lastKnown = {}
+-- Crash detection for running videos.
+local HEALTH_QUERY_MS = 10000
+local HEALTH_RETRY_MS = 5000
+local HEALTH_MISSING_MS = 3000
+local healthNextAt = {}
+local healthMissingSince = {}
+local healthInFlight = {}
 local siblingCache = { version = -1, dirs = {} }
 local NOTIFICATION_TITLE = "gSlapper"
 local IMAGE_EXTENSIONS = { jpg = true, jpeg = true, png = true, webp = true, jxl = true, bmp = true }
@@ -522,6 +531,8 @@ local COMMAND_ACTIONS = {
     ["restore-all"] = true,
     ["self-test"] = true,
     ["set-slideshow"] = true,
+    ["stop"] = true,
+    ["stop-all"] = true,
 }
 
 local function validateCommand(command)
@@ -876,6 +887,86 @@ end
 
 local function publishSlideshow()
     noctalia.state.set("slideshow", slideshow)
+end
+
+local function lastKnownPath()
+    local directory = noctalia.pluginDataDir()
+    if not directory then
+        return nil
+    end
+    return directory .. "/last_known.json"
+end
+
+local function loadLastKnown()
+    local path = lastKnownPath()
+    local contents = path and noctalia.readFile(path)
+    if not contents then
+        return {}
+    end
+    local decoded = noctalia.json.decode(contents)
+    if type(decoded) ~= "table" or type(decoded.outputs) ~= "table" then
+        return {}
+    end
+    local loaded = {}
+    for connector, record in pairs(decoded.outputs) do
+        local valid = validateAssignment(connector, record)
+        if valid then
+            local show = record.slideshow
+            if type(show) == "table" and SLIDESHOW_INTERVALS[show.interval_sec] and show.interval_sec > 0
+                and type(show.shuffle) == "boolean" then
+                valid.slideshow = { interval_sec = show.interval_sec, shuffle = show.shuffle }
+            end
+            loaded[connector] = valid
+        end
+    end
+    return loaded
+end
+
+local function saveLastKnown()
+    local path = lastKnownPath()
+    if not path then
+        return false, "plugin data directory is unavailable"
+    end
+    local encoded, encodeError = noctalia.json.encode({ version = 1, outputs = lastKnown }, true)
+    if not encoded then
+        return false, encodeError or "could not encode last known wallpapers"
+    end
+    local temporaryPath = path .. ".tmp"
+    local written, writeError = noctalia.writeFile(temporaryPath, encoded)
+    if not written then
+        return false, writeError or "could not write last known wallpapers"
+    end
+    local renamed, renameError = noctalia.renameFile(temporaryPath, path)
+    if not renamed then
+        noctalia.removeFile(temporaryPath)
+        return false, renameError or "could not replace last known wallpapers"
+    end
+    return true
+end
+
+local function publishLastKnown()
+    noctalia.state.set("last_known", lastKnown)
+end
+
+-- Remember the output's wallpaper and slideshow before Stop clears them.
+-- Videos come back paused because the user stopped them.
+local function rememberConnector(connector)
+    local assignment = assignments[connector]
+    if not assignment then
+        return
+    end
+    local record = copyTable(assignment)
+    if record.kind == "video" then
+        record.desired_playback = "paused"
+    end
+    local config = slideshow[connector]
+    record.slideshow = config and copyTable(config) or nil
+    lastKnown[connector] = record
+    local saved, saveError = saveLastKnown()
+    if not saved then
+        noctalia.log("Could not save last known wallpaper: " .. tostring(saveError))
+    end
+    publishLastKnown()
 end
 
 local function sortSlides(list)
@@ -1533,7 +1624,7 @@ local function setPlayback(connector, desired)
     return true
 end
 
-local function restoreConnector(connector)
+local function stopConnector(connector)
     if not connectorDetected(connector) then
         return false, "output is not connected"
     end
@@ -1541,6 +1632,7 @@ local function restoreConnector(connector)
         return false, "output switch is already in progress"
     end
 
+    rememberConnector(connector)
     local generation = nextGeneration(connector)
     videoTarget[connector] = nil
     local previous = assignments[connector]
@@ -1579,6 +1671,47 @@ local function restoreAssignment(connector)
     end
 end
 
+-- Restore: relaunch a crashed video, or bring back the wallpaper saved by Stop.
+local function restoreLast(connector)
+    if not connectorDetected(connector) then
+        return false, "output is not connected"
+    end
+    local assignment = assignments[connector]
+    if assignment then
+        local live = runtime[connector]
+        local running = live and (live.status == "playing" or live.status == "paused")
+        if assignment.kind == "video" and not running then
+            local ok, message = assignVideo(connector, assignment.path, assignment.preview_path, assignment.desired_playback)
+            local config = slideshow[connector]
+            if ok and config then
+                slideshowNextAt[connector] = noctalia.nowMs() + config.interval_sec * 1000
+            end
+            return ok, message
+        end
+        completeRequest(connector, true)
+        return true
+    end
+
+    local record = lastKnown[connector]
+    if not record then
+        completeRequest(connector, true)
+        return true
+    end
+    local ok, message
+    if record.kind == "image" then
+        ok, message = assignImage(connector, record.path)
+    else
+        ok, message = assignVideo(connector, record.path, record.preview_path, record.desired_playback)
+    end
+    if ok and record.slideshow then
+        slideshow[connector] = copyTable(record.slideshow)
+        slideshowNextAt[connector] = noctalia.nowMs() + record.slideshow.interval_sec * 1000
+        saveSlideshow()
+        publishSlideshow()
+    end
+    return ok, message
+end
+
 local function restoreConnectedAssignments()
     previousConnectors = detectedConnectors()
     noctalia.state.set("outputs", previousConnectors)
@@ -1604,7 +1737,8 @@ local function restartActiveVideos()
     for _, connector in ipairs(detectedConnectors()) do
         local assignment = assignments[connector]
         local live = runtime[connector]
-        if assignment and assignment.kind == "video" and live and not connectorBusy(connector) then
+        if assignment and assignment.kind == "video" and live and live.status ~= "stopped"
+            and not connectorBusy(connector) then
             local generation = nextGeneration(connector)
             live.status = "starting"
             live.error = nil
@@ -1780,6 +1914,9 @@ local function runModelChecks()
     assert(validateCommand({ nonce = 1, action = "set-slideshow", target = "*", interval_sec = 300, shuffle = false }), "valid slideshow command rejected")
     assert(not validateCommand({ nonce = 1, action = "set-slideshow", target = "*", interval_sec = 7, shuffle = false })
         and not validateCommand({ nonce = 1, action = "set-slideshow", target = "*", interval_sec = 60, shuffle = "yes" }), "invalid slideshow command accepted")
+    assert(validateCommand({ nonce = 1, action = "restore-all", target = "*" })
+        and validateCommand({ nonce = 1, action = "stop-all", target = "*" })
+        and validateCommand({ nonce = 1, action = "stop", target = "DP-1" }), "stop/restore commands rejected")
 
     local testStill = stillPathFor("/tmp/video.mp4")
     assert(testStill and testStill:match("/still%-[0-9a-f]+%.jpg$") ~= nil, "stillPathFor failed")
@@ -1908,7 +2045,8 @@ local function handleCommand(command)
         return true
     end
 
-    local target = command.action == "restore-all" and "*" or command.target
+    local allAction = command.action == "restore-all" or command.action == "stop-all"
+    local target = allAction and "*" or command.target
     local targets = commandTargets(command.action, target, connectors, assignments)
     local batch = { nonce = command.nonce, action = command.action, results = {} }
     commandBatches[command.nonce] = batch
@@ -1931,13 +2069,15 @@ local function handleCommand(command)
                 ok, message = setPlayback(connector, "playing")
             elseif command.action == "next" then
                 ok, message = advanceSlide(connector)
+            elseif command.action == "restore" or command.action == "restore-all" then
+                ok, message = restoreLast(connector)
             else
-                ok, message = restoreConnector(connector)
+                ok, message = stopConnector(connector)
             end
 
             if ok then
                 local config = slideshow[connector]
-                if command.action == "restore" or command.action == "restore-all" then
+                if command.action == "stop" or command.action == "stop-all" then
                     if config then
                         slideshow[connector] = nil
                         slideshowNextAt[connector] = nil
@@ -2036,6 +2176,19 @@ function onIpc(event, payload)
         local target = (type(payload) == "string" and payload ~= "") and payload or "*"
         handleCommand({
             nonce = nextIpcNonce(),
+            action = target == "*" and "stop-all" or "stop",
+            target = target,
+        })
+    elseif event == "restore-all" then
+        handleCommand({
+            nonce = nextIpcNonce(),
+            action = "restore-all",
+            target = "*",
+        })
+    elseif event == "restore" then
+        local target = (type(payload) == "string" and payload ~= "") and payload or "*"
+        handleCommand({
+            nonce = nextIpcNonce(),
             action = target == "*" and "restore-all" or "restore",
             target = target,
         })
@@ -2091,7 +2244,9 @@ local function slideshowTick(now)
                 local live = runtime[connector]
                 local paused = assignment and assignment.kind == "video"
                     and (assignment.desired_playback == "paused" or (live and live.status == "paused"))
-                if assignment and not paused and not connectorBusy(connector) and not activeRequests[connector] then
+                -- A crashed video only comes back through Restore.
+                local halted = live and (live.status == "stopped" or live.status == "error")
+                if assignment and not paused and not halted and not connectorBusy(connector) and not activeRequests[connector] then
                     local ok, message = advanceSlide(connector)
                     if not ok then
                         noctalia.log("Slideshow could not change " .. connector .. ": " .. tostring(message))
@@ -2102,9 +2257,91 @@ local function slideshowTick(now)
     end
 end
 
+local function resetHealth(connector)
+    healthNextAt[connector] = nil
+    healthMissingSince[connector] = nil
+    healthInFlight[connector] = nil
+end
+
+-- gSlapper died without being asked to: keep the assignment (and its
+-- desired playback) so Restore can relaunch it, and show the still image.
+local function markCrashed(connector)
+    resetHealth(connector)
+    noctalia.log("gSlapper exited unexpectedly on " .. connector)
+    runtime[connector] = { status = "stopped", error = "gSlapper exited unexpectedly" }
+    noctalia.setWallpaperEnabled(connector, true)
+    publishRuntime()
+end
+
+-- The socket is gone or refuses connections. Only call it a crash if no
+-- gslapper / gslapper-holder process still owns that socket (auto-stop
+-- swaps gSlapper for the socket-less holder while the output is hidden).
+local function confirmCrash(connector, live, generation)
+    healthInFlight[connector] = true
+    local function settle(crashed)
+        healthInFlight[connector] = nil
+        if not isCurrent(connector, generation) or runtime[connector] ~= live then
+            return
+        end
+        if crashed then
+            markCrashed(connector)
+        else
+            healthNextAt[connector] = noctalia.nowMs() + HEALTH_RETRY_MS
+        end
+    end
+    local needles = processMatchNeedles(live.socket_path)
+    local started = noctalia.processMatches(function(matched)
+        settle(not matched)
+    end, needles[1], needles[2], needles[3])
+    if not started then
+        settle(false)
+    end
+end
+
+local function healthTick(now)
+    for _, connector in ipairs(detectedConnectors()) do
+        local assignment = assignments[connector]
+        local live = runtime[connector]
+        local watched = assignment and assignment.kind == "video" and live and live.socket_path
+            and (live.status == "playing" or live.status == "paused")
+            and not pending[connector] and not activeRequests[connector]
+        if not watched then
+            resetHealth(connector)
+        elseif not healthInFlight[connector] then
+            local generation = generations[connector]
+            if not noctalia.fileExists(live.socket_path) then
+                healthMissingSince[connector] = healthMissingSince[connector] or now
+                if now - healthMissingSince[connector] >= HEALTH_MISSING_MS then
+                    healthMissingSince[connector] = nil
+                    confirmCrash(connector, live, generation)
+                end
+            else
+                healthMissingSince[connector] = nil
+                if not healthNextAt[connector] then
+                    healthNextAt[connector] = now + HEALTH_QUERY_MS
+                elseif now >= healthNextAt[connector] then
+                    healthInFlight[connector] = true
+                    ipcCommand(live.socket_path, "query", function(query)
+                        healthInFlight[connector] = nil
+                        if not isCurrent(connector, generation) or runtime[connector] ~= live then
+                            return
+                        end
+                        if query.notConnectable then
+                            confirmCrash(connector, live, generation)
+                        else
+                            healthNextAt[connector] = noctalia.nowMs() + HEALTH_QUERY_MS
+                        end
+                    end)
+                end
+            end
+        end
+    end
+end
+
 function update()
     local now = noctalia.nowMs()
     slideshowTick(now)
+    healthTick(now)
     for connector, operation in pairs(pending) do
         if not isCurrent(connector, operation.generation) then
             clearPending(connector, operation)
@@ -2157,6 +2394,8 @@ for connector, config in pairs(slideshow) do
     end
 end
 publishSlideshow()
+lastKnown = loadLastKnown()
+publishLastKnown()
 capabilitiesReady = restoreConnectedAssignments
 if type(noctalia.commandExists) == "function" then
     restartSettingsSignature = settingsSignature()
@@ -2204,4 +2443,6 @@ return {
     pruneStills = pruneStills,
     onIpc = onIpc,
     advanceSlide = advanceSlide,
+    lastKnown = function() return lastKnown end,
+    slideshow = function() return slideshow end,
 }
