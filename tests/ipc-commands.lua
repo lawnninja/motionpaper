@@ -146,6 +146,24 @@ service.onIpc("resume", "DP-1")
 assert(service.assignments["DP-1"].desired_playback == "playing", "expected desired_playback == playing")
 assert(service.runtime["DP-1"].status == "playing", "expected runtime status == playing")
 
+-- Test toggle-pause IPC command
+service.onIpc("toggle-pause", "DP-1")
+assert(service.assignments["DP-1"].desired_playback == "paused", "expected toggle-pause to pause playing output")
+assert(service.runtime["DP-1"].status == "paused")
+
+service.onIpc("toggle-pause", "DP-1")
+assert(service.assignments["DP-1"].desired_playback == "playing", "expected toggle-pause to resume paused output")
+assert(service.runtime["DP-1"].status == "playing")
+
+-- Test global toggle-pause ("*")
+service.onIpc("toggle-pause")
+assert(service.assignments["DP-1"].desired_playback == "paused", "expected global toggle-pause to pause all")
+assert(service.runtime["DP-1"].status == "paused")
+
+service.onIpc("toggle-pause")
+assert(service.assignments["DP-1"].desired_playback == "playing", "expected global toggle-pause to resume all")
+assert(service.runtime["DP-1"].status == "playing")
+
 print("=== Test 4: assignVideo launches gslapper only after still extraction completes ===")
 -- Reset DP-1
 service.runtime["DP-1"] = nil
